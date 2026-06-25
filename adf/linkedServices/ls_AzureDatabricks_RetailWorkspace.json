@@ -1,0 +1,20 @@
+{
+  "name": "ls_AzureDatabricks_RetailWorkspace",
+  "type": "Microsoft.DataFactory/factories/linkedservices",
+  "properties": {
+    "type": "AzureDatabricks",
+    "typeProperties": {
+      "domain": "https://adb-xxxxxxxxxxxx.x.azuredatabricks.net",
+      "authentication": "MSI",
+      "workspaceResourceId": "/subscriptions/<sub-id>/resourceGroups/rg-retail-demo/providers/Microsoft.Databricks/workspaces/retail-demo-databricks",
+      "newClusterNumOfWorker": "1:2",
+      "newClusterNodeType": "Standard_DS3_v2",
+      "newClusterVersion": "14.3.x-scala2.12",
+      "newClusterAutoTermination": 20
+    },
+    "annotations": [
+      "Uses ADF's managed identity against Databricks (MSI auth) instead of a long-lived PAT.",
+      "Job cluster with auto-termination after 20 minutes idle - keeps cost predictable on the free-tier credit."
+    ]
+  }
+}

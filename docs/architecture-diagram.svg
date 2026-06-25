@@ -1,0 +1,126 @@
+<svg viewBox="0 0 1480 760" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5b6472"/>
+    </marker>
+  </defs>
+
+  <rect width="1480" height="760" fill="#fbfaf8"/>
+
+  <text x="40" y="42" font-size="24" font-weight="700" fill="#1f2733">Retail Sales &amp; Customer Insight Pipeline</text>
+  <text x="40" y="66" font-size="14" fill="#6b7280">Azure Data Factory + Azure Databricks &#8226; medallion architecture (Bronze / Silver / Gold)</text>
+
+  <!-- SOURCES -->
+  <text x="40" y="116" font-size="13" font-weight="700" fill="#6b7280" letter-spacing="1">SOURCES</text>
+  <g font-size="13">
+    <rect x="40" y="130" width="190" height="56" rx="8" fill="#ffffff" stroke="#c9cdd3"/>
+    <text x="60" y="153" fill="#1f2733" font-weight="600">POS / order extracts</text>
+    <text x="60" y="171" fill="#6b7280" font-size="11">Daily CSV file drop (SFTP)</text>
+
+    <rect x="40" y="200" width="190" height="56" rx="8" fill="#ffffff" stroke="#c9cdd3"/>
+    <text x="60" y="223" fill="#1f2733" font-weight="600">CRM / catalog DB</text>
+    <text x="60" y="241" fill="#6b7280" font-size="11">Azure SQL Database</text>
+
+    <rect x="40" y="270" width="190" height="56" rx="8" fill="#ffffff" stroke="#c9cdd3"/>
+    <text x="60" y="293" fill="#1f2733" font-weight="600">Web/app clickstream</text>
+    <text x="60" y="311" fill="#6b7280" font-size="11">REST API (paginated)</text>
+  </g>
+
+  <line x1="230" y1="158" x2="300" y2="158" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="230" y1="228" x2="300" y2="200" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="230" y1="298" x2="300" y2="245" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ADF -->
+  <rect x="300" y="120" width="180" height="200" rx="10" fill="#eef4fc" stroke="#0a66c2" stroke-width="1.5"/>
+  <text x="390" y="148" font-size="14" font-weight="700" fill="#0a66c2" text-anchor="middle">Azure Data Factory</text>
+  <text x="390" y="168" font-size="11" fill="#3b4554" text-anchor="middle">orchestration</text>
+
+  <g font-size="11" fill="#3b4554">
+    <rect x="316" y="182" width="148" height="26" rx="5" fill="#ffffff" stroke="#aac7e8"/>
+    <text x="390" y="199" text-anchor="middle">GetMetadata check</text>
+
+    <rect x="316" y="214" width="148" height="26" rx="5" fill="#ffffff" stroke="#aac7e8"/>
+    <text x="390" y="231" text-anchor="middle">Copy Activity x3</text>
+
+    <rect x="316" y="246" width="148" height="26" rx="5" fill="#ffffff" stroke="#aac7e8"/>
+    <text x="390" y="263" text-anchor="middle">Notebook Activity</text>
+
+    <rect x="316" y="278" width="148" height="26" rx="5" fill="#ffffff" stroke="#aac7e8"/>
+    <text x="390" y="295" text-anchor="middle">If Condition / alert</text>
+  </g>
+  <text x="390" y="334" font-size="10.5" fill="#6b7280" text-anchor="middle">Trigger: daily 05:00 UTC</text>
+
+  <line x1="480" y1="200" x2="540" y2="200" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ADLS RAW -->
+  <rect x="540" y="140" width="130" height="120" rx="10" fill="#fff7e6" stroke="#c98a1b" stroke-width="1.5"/>
+  <text x="605" y="166" font-size="13" font-weight="700" fill="#8a5a05" text-anchor="middle">ADLS Gen2</text>
+  <text x="605" y="184" font-size="12" fill="#8a5a05" text-anchor="middle">raw zone</text>
+  <text x="605" y="208" font-size="10.5" fill="#9a7a3a" text-anchor="middle">landing, as-received</text>
+  <text x="605" y="224" font-size="10.5" fill="#9a7a3a" text-anchor="middle">CSV / JSON</text>
+
+  <line x1="670" y1="200" x2="730" y2="200" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- DATABRICKS -->
+  <rect x="730" y="100" width="330" height="320" rx="12" fill="#fdeee9" stroke="#d65a31" stroke-width="1.5"/>
+  <text x="895" y="128" font-size="14" font-weight="700" fill="#b8401c" text-anchor="middle">Azure Databricks (PySpark + Delta Lake)</text>
+
+  <rect x="752" y="148" width="286" height="64" rx="8" fill="#ffffff" stroke="#e6a78f"/>
+  <text x="895" y="170" font-size="13" font-weight="600" fill="#1f2733" text-anchor="middle">Bronze</text>
+  <text x="895" y="188" font-size="10.5" fill="#6b7280" text-anchor="middle">schema-enforced raw ingest, append-only</text>
+  <text x="895" y="203" font-size="10.5" fill="#6b7280" text-anchor="middle">+ ingestion metadata</text>
+
+  <line x1="895" y1="212" x2="895" y2="232" stroke="#b8401c" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="752" y="234" width="286" height="76" rx="8" fill="#ffffff" stroke="#e6a78f"/>
+  <text x="895" y="256" font-size="13" font-weight="600" fill="#1f2733" text-anchor="middle">Silver</text>
+  <text x="895" y="274" font-size="10.5" fill="#6b7280" text-anchor="middle">null / duplicate / range / referential-integrity</text>
+  <text x="895" y="289" font-size="10.5" fill="#6b7280" text-anchor="middle">checks &#8594; quarantine bad rows + dq_log</text>
+  <text x="895" y="304" font-size="10.5" fill="#6b7280" text-anchor="middle">clean, conformed Delta tables</text>
+
+  <line x1="895" y1="310" x2="895" y2="330" stroke="#b8401c" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="752" y="332" width="286" height="70" rx="8" fill="#ffffff" stroke="#e6a78f"/>
+  <text x="895" y="354" font-size="13" font-weight="600" fill="#1f2733" text-anchor="middle">Gold</text>
+  <text x="895" y="372" font-size="10.5" fill="#6b7280" text-anchor="middle">daily_sales_summary &#8226; top_products</text>
+  <text x="895" y="387" font-size="10.5" fill="#6b7280" text-anchor="middle">customer_value</text>
+
+  <line x1="1060" y1="200" x2="1120" y2="200" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ADLS CURATED -->
+  <rect x="1120" y="140" width="140" height="120" rx="10" fill="#fff7e6" stroke="#c98a1b" stroke-width="1.5"/>
+  <text x="1190" y="166" font-size="13" font-weight="700" fill="#8a5a05" text-anchor="middle">ADLS Gen2</text>
+  <text x="1190" y="184" font-size="12" fill="#8a5a05" text-anchor="middle">curated zone</text>
+  <text x="1190" y="208" font-size="10.5" fill="#9a7a3a" text-anchor="middle">business-ready</text>
+  <text x="1190" y="224" font-size="10.5" fill="#9a7a3a" text-anchor="middle">Delta tables</text>
+
+  <line x1="1260" y1="200" x2="1320" y2="200" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- CONSUMERS -->
+  <text x="1320" y="116" font-size="13" font-weight="700" fill="#6b7280" letter-spacing="1">CONSUMERS</text>
+  <rect x="1320" y="130" width="120" height="56" rx="8" fill="#ffffff" stroke="#c9cdd3"/>
+  <text x="1380" y="153" font-size="12" font-weight="600" fill="#1f2733" text-anchor="middle">Power BI</text>
+  <text x="1380" y="171" font-size="10.5" fill="#6b7280" text-anchor="middle">ops dashboard</text>
+
+  <rect x="1320" y="200" width="120" height="56" rx="8" fill="#ffffff" stroke="#c9cdd3"/>
+  <text x="1380" y="223" font-size="12" font-weight="600" fill="#1f2733" text-anchor="middle">Marketing/CRM</text>
+  <text x="1380" y="241" font-size="10.5" fill="#6b7280" text-anchor="middle">segmentation feed</text>
+
+  <!-- Rejected path: routed left of the Gold box so it doesn't cross any text -->
+  <line x1="752" y1="272" x2="700" y2="272" stroke="#b8401c" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="700" y1="272" x2="700" y2="460" stroke="#b8401c" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <rect x="585" y="468" width="230" height="50" rx="8" fill="#ffffff" stroke="#d65a31" stroke-dasharray="3,2"/>
+  <text x="700" y="488" font-size="11.5" font-weight="600" fill="#b8401c" text-anchor="middle">rejected zone</text>
+  <text x="700" y="504" font-size="10" fill="#8a5a05" text-anchor="middle">quarantined rows + reason code</text>
+
+  <!-- Key Vault note -->
+  <rect x="300" y="350" width="180" height="44" rx="8" fill="#f1eefb" stroke="#7a5fc0" stroke-dasharray="3,2"/>
+  <text x="390" y="368" font-size="11" font-weight="600" fill="#5a3fae" text-anchor="middle">Azure Key Vault</text>
+  <text x="390" y="383" font-size="10" fill="#5a3fae" text-anchor="middle">secrets for every linked service</text>
+  <line x1="390" y1="350" x2="390" y2="320" stroke="#7a5fc0" stroke-width="1.2" stroke-dasharray="3,2"/>
+
+  <!-- Legend -->
+  <g font-size="11" fill="#6b7280">
+    <text x="40" y="700">Solid arrows: data flow &#160;&#160;&#8226;&#160;&#160; Dashed: quarantine / security dependency</text>
+  </g>
+</svg>

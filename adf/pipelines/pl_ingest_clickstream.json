@@ -1,0 +1,40 @@
+{
+  "name": "pl_ingest_clickstream",
+  "type": "Microsoft.DataFactory/factories/pipelines",
+  "properties": {
+    "description": "Pulls web/app clickstream events from the analytics REST API. Paginated and throttled to respect the API's 60 req/min rate limit - one of the real challenges on this source (see README data challenges section).",
+    "activities": [
+      {
+        "name": "CopyClickstreamEvents",
+        "type": "Copy",
+        "typeProperties": {
+          "source": {
+            "type": "RestSource",
+            "httpRequestTimeout": "00:01:40",
+            "requestInterval": "1000",
+            "paginationRules": {
+              "supportRFC5988": "true"
+            }
+          },
+          "sink": { "type": "JsonSink" }
+        },
+        "inputs": [{ "referenceName": "ds_RestApi_Clickstream", "type": "DatasetReference" }],
+        "outputs": [
+          {
+            "referenceName": "ds_ADLS_Raw_Generic",
+            "type": "DatasetReference",
+            "parameters": { "fileSystem": "raw", "fileName": "clickstream_events.jsonl" }
+          }
+        ],
+        "policy": {
+          "retry": 3,
+          "retryIntervalInSeconds": 30,
+          "timeout": "0.00:10:00"
+        }
+      }
+    ],
+    "annotations": [
+      "retry + requestInterval were added after the first version got HTTP 429s during the daily run and silently lost the last page of events - now it backs off and retries instead of failing the whole pipeline."
+    ]
+  }
+}

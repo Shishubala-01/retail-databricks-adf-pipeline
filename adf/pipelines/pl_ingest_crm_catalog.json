@@ -1,0 +1,47 @@
+{
+  "name": "pl_ingest_crm_catalog",
+  "type": "Microsoft.DataFactory/factories/pipelines",
+  "properties": {
+    "description": "Pulls customers and product catalog reference data from the CRM SQL database into the raw zone as CSV. Demonstrates the database-source pattern, distinct from the file-based orders source.",
+    "activities": [
+      {
+        "name": "CopyCustomers",
+        "type": "Copy",
+        "inputs": [{ "referenceName": "ds_AzureSqlDB_Customers", "type": "DatasetReference" }],
+        "outputs": [
+          {
+            "referenceName": "ds_ADLS_Raw_Generic",
+            "type": "DatasetReference",
+            "parameters": { "fileSystem": "raw", "fileName": "customers.csv" }
+          }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT customer_id, first_name, last_name, email, city, country, signup_date, customer_segment FROM dbo.Customers"
+          },
+          "sink": { "type": "DelimitedTextSink" }
+        }
+      },
+      {
+        "name": "CopyProducts",
+        "type": "Copy",
+        "inputs": [{ "referenceName": "ds_AzureSqlDB_Products", "type": "DatasetReference" }],
+        "outputs": [
+          {
+            "referenceName": "ds_ADLS_Raw_Generic",
+            "type": "DatasetReference",
+            "parameters": { "fileSystem": "raw", "fileName": "products.csv" }
+          }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT product_id, product_name, category, sub_category, unit_price, supplier_id FROM dbo.Products"
+          },
+          "sink": { "type": "DelimitedTextSink" }
+        }
+      }
+    ]
+  }
+}

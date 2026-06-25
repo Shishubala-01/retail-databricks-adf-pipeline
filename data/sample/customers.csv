@@ -1,0 +1,16 @@
+customer_id,first_name,last_name,email,city,country,signup_date,customer_segment
+C001,Alice,Carter,alice.carter@example.com,London,UK,2022-03-14,Regular
+C002,Ben,Walker,ben.walker@example.com,Manchester,UK,2021-11-02,VIP
+C003,Chloe,Adams,chloe.adams@example.com,Bristol,UK,2023-01-09,Regular
+C004,Daniel,Hughes,daniel.hughes@example.com,Leeds,UK,2020-06-23,VIP
+C005,Ella,Foster,ella.foster@example.com,London,UK,2023-05-30,Regular
+C006,Finn,Murray,finn.murray@example.com,Glasgow,UK,2022-09-17,Regular
+C007,Grace,Bell,grace.bell@example.com,Edinburgh,UK,2021-02-11,Regular
+C008,Harry,Owen,harry.owen@example.com,Cardiff,UK,2023-08-04,Regular
+C009,Isla,Reid,isla.reid@example.com,London,UK,2022-12-19,VIP
+C010,Jack,Price,jack.price@example.com,Liverpool,UK,2021-07-08,Regular
+C011,Katie,Shaw,katie.shaw@example.com,Birmingham,UK,2023-02-27,Regular
+C012,Liam,Knight,liam.knight@example.com,London,UK,2020-10-15,VIP
+C013,Mia,Wood,mia.wood@example.com,Bristol,UK,2022-04-21,Regular
+C014,Noah,Burns,noah.burns@example.com,Leeds,UK,2023-06-11,Regular
+C015,Olivia,Stone,olivia.stone@example.com,Manchester,UK,2021-09-29,Regular

@@ -1,0 +1,15 @@
+{
+  "name": "ls_AzureSqlDB_RetailCRM",
+  "type": "Microsoft.DataFactory/factories/linkedservices",
+  "properties": {
+    "type": "AzureSqlDatabase",
+    "typeProperties": {
+      "connectionString": "Data Source=retail-crm-sql.database.windows.net;Initial Catalog=RetailCRM;",
+      "authenticationType": "ManagedIdentity"
+    },
+    "annotations": [
+      "Source system: CRM database holding customers and product catalog tables.",
+      "ADF's managed identity is granted db_datareader only - least privilege."
+    ]
+  }
+}

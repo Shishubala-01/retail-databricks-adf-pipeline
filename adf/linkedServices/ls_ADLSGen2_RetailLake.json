@@ -1,0 +1,25 @@
+{
+  "name": "ls_ADLSGen2_RetailLake",
+  "type": "Microsoft.DataFactory/factories/linkedservices",
+  "properties": {
+    "type": "AzureBlobFS",
+    "typeProperties": {
+      "url": "https://retaildemoadls.dfs.core.windows.net"
+    },
+    "annotations": [
+      "Uses a Service Principal stored in Key Vault, not a storage account key, so secrets never live in plain text in ADF."
+    ],
+    "typePropertiesAuth": {
+      "servicePrincipalId": "@{linkedService().spClientId}",
+      "servicePrincipalCredential": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "ls_KeyVault_Retail",
+          "type": "LinkedServiceReference"
+        },
+        "secretName": "adls-sp-secret"
+      },
+      "tenant": "@{linkedService().tenantId}"
+    }
+  }
+}

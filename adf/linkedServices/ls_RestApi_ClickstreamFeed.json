@@ -1,0 +1,14 @@
+{
+  "name": "ls_RestApi_ClickstreamFeed",
+  "type": "Microsoft.DataFactory/factories/linkedservices",
+  "properties": {
+    "type": "RestService",
+    "typeProperties": {
+      "url": "https://events.retaildemo.example.com/api/v1/",
+      "authenticationType": "AnonymousAuthentication"
+    },
+    "annotations": [
+      "Represents the web analytics / clickstream events API. Anonymous for the demo; production used an API key stored in Key Vault and a tumbling-window trigger to page through results since the API rate-limits to 60 req/min."
+    ]
+  }
+}

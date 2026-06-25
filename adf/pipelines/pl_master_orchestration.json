@@ -1,0 +1,110 @@
+{
+  "name": "pl_master_orchestration",
+  "type": "Microsoft.DataFactory/factories/pipelines",
+  "properties": {
+    "description": "Daily end-to-end run: ingest all sources to raw, run Bronze -> Silver -> Gold in Databricks, alert if the Silver data-quality reject rate is too high.",
+    "activities": [
+      {
+        "name": "IngestOrders",
+        "type": "ExecutePipeline",
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_ingest_orders", "type": "PipelineReference" },
+          "parameters": { "ingestionDate": "@formatDateTime(utcnow(), 'yyyy-MM-dd')" }
+        }
+      },
+      {
+        "name": "IngestCustomersAndProducts",
+        "type": "ExecutePipeline",
+        "dependsOn": [],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_ingest_crm_catalog", "type": "PipelineReference" }
+        },
+        "annotations": ["Runs in parallel with IngestOrders - no dependency between source systems."]
+      },
+      {
+        "name": "IngestClickstream",
+        "type": "ExecutePipeline",
+        "dependsOn": [],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_ingest_clickstream", "type": "PipelineReference" }
+        }
+      },
+      {
+        "name": "RunBronzeNotebook",
+        "type": "DatabricksNotebook",
+        "dependsOn": [
+          { "activity": "IngestOrders", "dependencyConditions": ["Succeeded"] },
+          { "activity": "IngestCustomersAndProducts", "dependencyConditions": ["Succeeded"] },
+          { "activity": "IngestClickstream", "dependencyConditions": ["Succeeded"] }
+        ],
+        "linkedServiceName": { "referenceName": "ls_AzureDatabricks_RetailWorkspace", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "notebookPath": "/Repos/retail-databricks-adf-pipeline/databricks/notebooks/01_bronze_ingest_validate",
+          "baseParameters": {
+            "ingestion_date": "@formatDateTime(utcnow(), 'yyyy-MM-dd')",
+            "raw_base_path": "abfss://raw@retaildemoadls.dfs.core.windows.net",
+            "bronze_base_path": "abfss://processed@retaildemoadls.dfs.core.windows.net/bronze"
+          }
+        }
+      },
+      {
+        "name": "RunSilverNotebook",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "RunBronzeNotebook", "dependencyConditions": ["Succeeded"] }],
+        "linkedServiceName": { "referenceName": "ls_AzureDatabricks_RetailWorkspace", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "notebookPath": "/Repos/retail-databricks-adf-pipeline/databricks/notebooks/02_silver_clean_transform",
+          "baseParameters": {
+            "bronze_base_path": "abfss://processed@retaildemoadls.dfs.core.windows.net/bronze",
+            "silver_base_path": "abfss://processed@retaildemoadls.dfs.core.windows.net/silver",
+            "rejected_base_path": "abfss://rejected@retaildemoadls.dfs.core.windows.net",
+            "dq_log_path": "abfss://processed@retaildemoadls.dfs.core.windows.net/_dq_log"
+          }
+        }
+      },
+      {
+        "name": "CheckRejectRate",
+        "type": "IfCondition",
+        "dependsOn": [{ "activity": "RunSilverNotebook", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "expression": {
+            "value": "@greater(float(activity('RunSilverNotebook').output.runOutput), 0.05)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "name": "AlertHighRejectRate",
+              "type": "WebActivity",
+              "typeProperties": {
+                "url": "@{pipeline().parameters.teamsWebhookUrl}",
+                "method": "POST",
+                "body": {
+                  "text": "Retail pipeline: Silver reject rate exceeded 5% on @{formatDateTime(utcnow(), 'yyyy-MM-dd')}. Check dq_log table before Gold refresh."
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "RunGoldNotebook",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "CheckRejectRate", "dependencyConditions": ["Succeeded"] }],
+        "linkedServiceName": { "referenceName": "ls_AzureDatabricks_RetailWorkspace", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "notebookPath": "/Repos/retail-databricks-adf-pipeline/databricks/notebooks/03_gold_aggregate",
+          "baseParameters": {
+            "silver_base_path": "abfss://processed@retaildemoadls.dfs.core.windows.net/silver",
+            "gold_base_path": "abfss://curated@retaildemoadls.dfs.core.windows.net/gold"
+          }
+        },
+        "annotations": [
+          "Gold still runs even on a high reject rate - the alert is informational, not a hard stop, so the dashboard isn't held hostage by a single bad source file. This was a deliberate design choice after the first version blocked Gold entirely and the merchandising team lost a day of dashboard data over one malformed file."
+        ]
+      }
+    ],
+    "parameters": {
+      "teamsWebhookUrl": { "type": "string" }
+    }
+  }
+}

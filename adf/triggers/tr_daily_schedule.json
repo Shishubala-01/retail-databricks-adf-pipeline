@@ -1,0 +1,26 @@
+{
+  "name": "tr_daily_schedule",
+  "type": "Microsoft.DataFactory/factories/triggers",
+  "properties": {
+    "type": "ScheduleTrigger",
+    "typeProperties": {
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "startTime": "2024-01-05T05:00:00Z",
+        "timeZone": "UTC"
+      }
+    },
+    "pipelines": [
+      {
+        "pipelineReference": { "referenceName": "pl_master_orchestration", "type": "PipelineReference" },
+        "parameters": {
+          "teamsWebhookUrl": "@{pipeline().globalParameters.teamsWebhookUrl}"
+        }
+      }
+    ],
+    "annotations": [
+      "05:00 UTC - after the overnight POS batch extract completes and before the merchandising team's 8am dashboard refresh."
+    ]
+  }
+}

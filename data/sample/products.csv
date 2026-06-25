@@ -1,0 +1,16 @@
+product_id,product_name,category,sub_category,unit_price,supplier_id
+P001,Wireless Mouse,Electronics,Accessories,19.99,S01
+P002,Mechanical Keyboard,Electronics,Accessories,59.99,S01
+P003,USB-C Cable 1m,Electronics,Cables,7.49,S02
+P004,Bluetooth Speaker,Electronics,Audio,34.99,S01
+P005,Yoga Mat,Sports,Fitness,21.50,S03
+P006,Running Shoes,Sports,Footwear,74.99,S03
+P007,Stainless Water Bottle,Home,Kitchenware,12.99,S04
+P008,Ceramic Mug Set,Home,Kitchenware,15.49,S04
+P009,Desk Lamp,Home,Lighting,27.99,S05
+P010,Notebook A5,Office,Stationery,4.99,S06
+P011,Gel Pen Pack,Office,Stationery,3.49,S06
+P012,Laptop Stand,Electronics,Accessories,29.99,S01
+P013,Phone Case,Electronics,Accessories,11.99,S02
+P014,Resistance Bands,Sports,Fitness,9.99,S03
+P015,Travel Backpack,Outdoor,Bags,49.99,S07

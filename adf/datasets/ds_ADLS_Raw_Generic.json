@@ -1,0 +1,24 @@
+{
+  "name": "ds_ADLS_Raw_Generic",
+  "type": "Microsoft.DataFactory/factories/datasets",
+  "properties": {
+    "linkedServiceName": { "referenceName": "ls_ADLSGen2_RetailLake", "type": "LinkedServiceReference" },
+    "parameters": {
+      "fileSystem": { "type": "string", "defaultValue": "raw" },
+      "fileName": { "type": "string" }
+    },
+    "type": "DelimitedText",
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobFSLocation",
+        "fileSystem": { "value": "@dataset().fileSystem", "type": "Expression" },
+        "fileName": { "value": "@dataset().fileName", "type": "Expression" }
+      },
+      "columnDelimiter": ",",
+      "firstRowAsHeader": true
+    },
+    "annotations": [
+      "One generic parameterized dataset reused by every Copy Activity sink, instead of one dataset per file - keeps the factory maintainable as sources grow."
+    ]
+  }
+}

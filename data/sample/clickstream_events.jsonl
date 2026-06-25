@@ -1,0 +1,8 @@
+{"event_id": "E001", "session_id": "S100", "customer_id": "C001", "event_type": "page_view", "event_timestamp": "2024-01-05T09:12:03Z", "page_url": "/products/P001", "device_type": "mobile"}
+{"event_id": "E002", "session_id": "S100", "customer_id": "C001", "event_type": "add_to_cart", "event_timestamp": "2024-01-05T09:13:40Z", "page_url": "/products/P001", "device_type": "mobile"}
+{"event_id": "E003", "session_id": "S101", "customer_id": "C002", "event_type": "page_view", "event_timestamp": "2024-01-05T10:02:11Z", "page_url": "/products/P006", "device_type": "desktop"}
+{"event_id": "E004", "session_id": "S101", "customer_id": "C002", "event_type": "purchase", "event_timestamp": "2024-01-05T10:05:55Z", "page_url": "/checkout", "device_type": "desktop"}
+{"event_id": "E005", "session_id": "S102", "customer_id": "C009", "event_type": "page_view", "event_timestamp": "2024-01-09T14:21:00Z", "page_url": "/products/P003", "device_type": "tablet"}
+{"event_id": "E006", "session_id": "S102", "customer_id": "C009", "event_type": "add_to_cart", "event_timestamp": "2024-01-09T14:22:30Z", "page_url": "/products/P003", "device_type": "tablet"}
+{"event_id": "E007", "session_id": "S103", "customer_id": null, "event_type": "page_view", "event_timestamp": "2024-01-07T08:00:00Z", "page_url": "/products/P004", "device_type": "mobile"}
+{"event_id": "E008", "session_id": "S104", "customer_id": "C011", "event_type": "purchase", "event_timestamp": "2024-01-10T16:40:18Z", "page_url": "/checkout", "device_type": "desktop"}

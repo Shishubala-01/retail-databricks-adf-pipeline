@@ -1,0 +1,20 @@
+{
+  "name": "ds_Landing_Orders",
+  "type": "Microsoft.DataFactory/factories/datasets",
+  "properties": {
+    "linkedServiceName": { "referenceName": "ls_ADLSGen2_RetailLake", "type": "LinkedServiceReference" },
+    "type": "DelimitedText",
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobFSLocation",
+        "fileSystem": "landing",
+        "fileName": "orders_raw.csv"
+      },
+      "columnDelimiter": ",",
+      "firstRowAsHeader": true
+    },
+    "annotations": [
+      "Represents the daily POS extract drop. In production this came via SFTP from the store systems integrator; for the demo it's simulated as a daily file drop into a 'landing' container that ADF picks up on a schedule."
+    ]
+  }
+}
