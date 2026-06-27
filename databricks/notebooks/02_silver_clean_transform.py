@@ -41,12 +41,16 @@ customers_clean, customers_rejected, m1 = check_no_duplicates(customers_bronze, 
 products_clean, products_rejected, m2 = check_no_duplicates(products_bronze, ["product_id"])
 
 # --- Standardise order_date: source sometimes sends DD-MM-YYYY instead of YYYY-MM-DD
-#     (this is a real example of "schema/format drift" worth raising in the interview) ---
+#     (this is a real example of "schema/format drift" worth raising in the interview).
+#     Uses try_to_date rather than to_date - under ANSI mode (the current Databricks
+#     default), to_date() raises CANNOT_PARSE_TIMESTAMP on a format mismatch instead of
+#     returning null, which breaks a coalesce-based fallback. try_to_date returns NULL
+#     on a parse failure instead, which is what the fallback logic actually needs. ---
 orders_parsed = orders_bronze.withColumn(
     "order_date_parsed",
     F.coalesce(
-        F.to_date("order_date", "yyyy-MM-dd"),
-        F.to_date("order_date", "dd-MM-yyyy"),
+        F.expr("try_to_date(order_date, 'yyyy-MM-dd')"),
+        F.expr("try_to_date(order_date, 'dd-MM-yyyy')"),
     )
 )
 
