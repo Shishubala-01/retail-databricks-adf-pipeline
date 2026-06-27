@@ -75,7 +75,11 @@ the demo.
 6. **ADF `IfCondition`**: reads the Silver notebook's reject-rate output; above a 5% threshold it
    posts an alert (Teams webhook) before Gold runs — informational, not a hard stop (see
    [Section 6](#6-data-challenges) for why).
-7. **Databricks `03_gold_aggregate`**: builds the curated business tables.
+7. **Databricks `03_gold_aggregate`**: builds the curated business tables, registered with **Liquid
+   Clustering** (`CLUSTER BY`) rather than partitioning/ZORDER — Databricks' current recommendation
+   for new tables. Clustering keys were chosen from the columns Power BI actually filters by:
+   `(order_date, region)` on `daily_sales_summary`, `category` on `top_products`,
+   `customer_segment` on `customer_value`.
 
 This is the same pattern as Great Expectations / Delta Live Tables expectations, implemented as a
 small reusable PySpark module so every notebook applies checks the same way and logs them the same

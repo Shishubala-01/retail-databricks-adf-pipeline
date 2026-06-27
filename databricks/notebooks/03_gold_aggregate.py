@@ -3,6 +3,12 @@
 # Purpose: turn clean Silver data into the business-ready "data product" -
 # the curated tables that Power BI / the merchandising team actually consume.
 # This is the layer you point to when asked "what was the output dataset used for".
+#
+# Layout: Gold tables use Liquid Clustering (CLUSTER BY), not ZORDER/partitioning.
+# Clustering keys were picked from what Power BI actually filters/groups by, not
+# guessed - e.g. the daily dashboard always filters by order_date and region first.
+# This requires registering tables via saveAsTable rather than a path-only
+# .save() - clusterBy() needs the table API to persist the clustering metadata.
 
 from pyspark.sql import functions as F
 
@@ -11,6 +17,8 @@ dbutils.widgets.text("gold_base_path", "/mnt/gold")
 
 silver_base_path = dbutils.widgets.get("silver_base_path")
 gold_base_path = dbutils.widgets.get("gold_base_path")
+
+spark.sql("CREATE DATABASE IF NOT EXISTS retail_gold")
 
 orders = spark.read.format("delta").load(f"{silver_base_path}/orders")
 products = spark.read.format("delta").load(f"{silver_base_path}/products")
@@ -33,7 +41,7 @@ daily_sales_summary = (
     )
     .withColumnRenamed("order_date_parsed", "order_date")
 )
-daily_sales_summary.write.format("delta").mode("overwrite").save(f"{gold_base_path}/daily_sales_summary")
+daily_sales_summary.write.format("delta").mode("overwrite").clusterBy("order_date", "region").saveAsTable("retail_gold.daily_sales_summary")
 
 # --- Data product 2: top products ranking ---
 # Used for: merchandising team's weekly "what's moving" review
@@ -46,7 +54,7 @@ top_products = (
     )
     .orderBy(F.desc("total_revenue"))
 )
-top_products.write.format("delta").mode("overwrite").save(f"{gold_base_path}/top_products")
+top_products.write.format("delta").mode("overwrite").clusterBy("category").saveAsTable("retail_gold.top_products")
 
 # --- Data product 3: customer value summary ---
 # Used for: marketing segmentation / CRM campaign targeting
@@ -59,7 +67,7 @@ customer_value = (
         F.max("order_date_parsed").alias("last_order_date"),
     )
 )
-customer_value.write.format("delta").mode("overwrite").save(f"{gold_base_path}/customer_value")
+customer_value.write.format("delta").mode("overwrite").clusterBy("customer_segment").saveAsTable("retail_gold.customer_value")
 
 print("Gold tables written:")
 print(" - daily_sales_summary:", daily_sales_summary.count(), "rows")
