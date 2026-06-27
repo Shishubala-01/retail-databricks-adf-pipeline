@@ -7,6 +7,10 @@
 #
 # Triggered by ADF as a "Notebook Activity" after the Copy Activities land files in
 # the `raw` container. ADF passes the ingestion date as a parameter.
+#
+# Note: uses the _metadata.file_path column rather than the legacy input_file_name()
+# function - input_file_name() is blocked under Unity Catalog (UC_COMMAND_NOT_SUPPORTED),
+# since it can expose raw file paths outside the governed access model.
 
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
@@ -74,7 +78,7 @@ def land_to_bronze(source_format, source_path, schema, table_name):
 
     df = (
         df.withColumn("_ingest_ts", F.current_timestamp())
-        .withColumn("_source_file", F.input_file_name())
+        .withColumn("_source_file", F.col("_metadata.file_path"))
         .withColumn("_ingestion_date", F.lit(ingestion_date))
     )
 
