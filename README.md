@@ -23,6 +23,7 @@ data-quality enforcement at every layer.
 | Data products / outputs | [Section 5](#5-data-products) |
 | Real challenges hit during the build | [Section 6](#6-data-challenges) |
 | How to rebuild this yourself on the free tier | [Section 7](#7-building-this-yourself-on-the-azure-free-tier) |
+| Unit tests / TDD | [Section 8](#8-testing) |
 
 A 10-minute presentation script is in [`docs/presentation-notes.md`](docs/presentation-notes.md).
 
@@ -143,6 +144,26 @@ These are real issues hit and fixed during this build, not invented ones:
 4. **Cost control**: this all fits comfortably inside the free-tier credit and Serverless'
    pay-per-use model for a demo of this size. No always-on cluster to forget about.
 
+## 8. Testing
+
+The four data-quality check functions are extracted into [`src/quality_checks.py`](src/quality_checks.py)
+specifically so they're unit-testable locally with pytest and a local SparkSession — no Databricks
+cluster needed to verify the logic.
+
+```
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+`tests/test_quality_checks.py` covers the four checks already used in the live Silver notebook
+(characterization tests, written after the logic, as a regression safety net).
+
+`tests/test_check_future_dates.py` covers a check added with genuine TDD — written and run against
+the function *before it existed* (confirmed failing with `ImportError`), then implemented to make
+the tests pass, then reviewed for refactoring (none needed — the implementation was already
+minimal). `check_future_dates` itself isn't yet wired into the live Silver notebook; it exists here
+as a tested, ready-to-use addition.
+
 ---
 
 ## Repo structure
@@ -150,10 +171,17 @@ These are real issues hit and fixed during this build, not invented ones:
 ```
 retail-databricks-adf-pipeline/
 ├── README.md
+├── conftest.py                    # pytest fixtures (local SparkSession, src/ on path)
+├── requirements-dev.txt
 ├── docs/
 │   ├── architecture-diagram.svg
 │   └── presentation-notes.md
 ├── data/sample/                  # synthetic sample data, incl. seeded DQ issues
+├── src/
+│   └── quality_checks.py         # testable quality-check functions
+├── tests/
+│   ├── test_quality_checks.py
+│   └── test_check_future_dates.py  # built with genuine TDD - see Section 8
 ├── adf/
 │   ├── linkedServices/
 │   ├── datasets/
