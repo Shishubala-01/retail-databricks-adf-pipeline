@@ -51,12 +51,22 @@ feeding marketing segmentation." Tie each table to a *person* and a *decision* �
 it sound like a real data product rather than a table that exists for its own sake.
 
 **Data challenges (1:30) — pick 2, max 3**
-Strongest two to lead with:
-1. Schema/format drift on the date field — handled with a fallback parse rather than a hard failure.
-2. The blocking-quality-gate story — an early version failed the whole pipeline on any reject,
-   which took down the next day's dashboard over one bad file; changed to quarantine + alert +
-   continue. This one is good because it shows a mistake and a fix, which interviewers like more
-   than a clean success story.
+These actually happened during the build, in this order, which makes them easy to narrate
+naturally rather than recite:
+1. **Serverless compute doesn't support DBFS mounts or account keys.** Had to switch the whole
+   ADLS connection approach to Unity Catalog External Locations + an Access Connector's managed
+   identity — no secret in any notebook. Good one to lead with, since it shows an architecture
+   decision, not just a bug fix.
+2. **Unity Catalog blocks `input_file_name()`** (`UC_COMMAND_NOT_SUPPORTED`) — switched to the
+   `_metadata.file_path` column.
+3. **`to_date()` raises instead of returning null under ANSI mode** when a date doesn't match
+   the expected format — switched to `try_to_date()`, which is the null-safe equivalent the
+   original fallback logic actually needed.
+
+If asked for the *data-shape* style of challenge rather than the platform/engineering style:
+orphaned foreign keys (`product_id` and `customer_id` referencing rows that don't exist in the
+dimension tables) is the clean example — caught and quarantined rather than silently joined as
+null.
 
 **Close (1 min)**
 "If I were extending this, the next thing I'd add is [pick one: Unity Catalog for centralized

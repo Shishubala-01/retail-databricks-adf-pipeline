@@ -1,174 +1,147 @@
 # Retail Sales & Customer Insight Pipeline
 
-An Azure Data Factory + Azure Databricks pipeline built to demonstrate a medallion-architecture
-(Bronze/Silver/Gold) data platform for an online retail business, with data-quality enforcement
-at every layer.
+An Azure Data Factory + Azure Databricks pipeline demonstrating a medallion-architecture
+(Bronze/Silver/Gold) data platform for a retail sales and customer analytics use case, with
+data-quality enforcement at every layer.
 
 ![Architecture](docs/architecture-diagram.svg)
 
-> **About this repo.** This is a self-contained demo build with synthetic sample data, sized to
-> run end-to-end on the Azure free tier. It mirrors a real pattern used in production retail data
-> platforms: multi-source ingestion, schema-enforced raw landing, explicit quality gates before
-> data is trusted, and curated business marts. If you're using this to prep for an interview where
-> you have real prior experience but no access to that environment anymore, swap in your own
-> anonymised numbers/specifics where you can speak to them directly — that's the strongest version
-> of the presentation.
+> **About this repo.** This was built and validated end-to-end on a live Azure free-tier
+> subscription: a real ADLS Gen2 account, a real ADF pipeline, and real Databricks notebooks run
+> on Serverless compute against real (synthetic) sample data. It isn't a client engagement —
+> it's a self-driven build to demonstrate the full pattern hands-on. The numbers and bugs
+> described below are what actually happened during the build, not a theoretical design.
 
 ---
 
-## 1. What this covers (mapped to the brief)
+## 1. What this covers
 
-| Interview ask | Where it's answered |
+| Topic | Where |
 |---|---|
-| What sources were used | [Section 3 — Sources](#3-sources) |
-| How data was transferred with quality checks | [Section 4 — Pipeline & Data Quality](#4-pipeline--data-quality) |
-| What the output dataset/data product was used for | [Section 5 — Data Products](#5-data-products) |
-| Data challenges | [Section 6 — Data Challenges](#6-data-challenges) |
+| Sources | [Section 3](#3-sources) |
+| Transfer & data quality checks | [Section 4](#4-pipeline--data-quality) |
+| Data products / outputs | [Section 5](#5-data-products) |
+| Real challenges hit during the build | [Section 6](#6-data-challenges) |
+| How to rebuild this yourself on the free tier | [Section 7](#7-building-this-yourself-on-the-azure-free-tier) |
 
-A ready-to-read 10-minute script is in [`docs/presentation-notes.md`](docs/presentation-notes.md).
-
----
+A 10-minute presentation script is in [`docs/presentation-notes.md`](docs/presentation-notes.md).
 
 ## 2. Architecture
 
 Sources → **Azure Data Factory** (orchestration & ingestion) → **ADLS Gen2 raw zone** →
-**Azure Databricks** (Bronze → Silver → Gold, PySpark + Delta Lake) → **ADLS Gen2 curated zone** →
-**Power BI** / downstream consumers.
+**Azure Databricks** (Bronze → Silver → Gold, PySpark + Delta Lake, on Serverless compute) →
+**Unity Catalog managed tables** → Power BI / downstream consumers.
 
-- **Bronze**: raw data landed as-is with schema enforcement and ingestion metadata. Append-only —
-  full history preserved for replay/audit.
-- **Silver**: data-quality checks applied (not-null, de-duplication, referential integrity, value
-  range). Failing rows are quarantined with a reason code, not silently dropped.
-- **Gold**: business aggregates — the actual data products consumers query.
+- **Bronze**: raw data landed as-is with schema enforcement and ingestion metadata. Append-only.
+- **Silver**: data-quality checks applied (not-null, de-duplication, value-range, referential
+  integrity). Failing rows are quarantined with a reason code, not silently dropped.
+- **Gold**: business aggregates, registered as Unity Catalog tables with **Liquid Clustering**.
+
+**Validated counts from an actual run:** 21 raw order rows in → 6 rejected (≈29%, across 5
+overlapping checks — see [Section 6](#6-data-challenges) for why the rejected count and the
+"removed from clean data" count aren't quite the same number) → 16 clean orders in Silver → 3
+Gold tables built on top.
 
 ## 3. Sources
 
-Three source types were deliberately included to cover the connector patterns ADF is commonly used for:
+Three source types were used to cover the connector patterns ADF is commonly used for. The
+**orders source (file-based) is fully live** — real ADF Copy activity, real ADLS containers. The
+**SQL Database and REST API sources are designed and documented** (linked services, datasets,
+pipelines in `adf/`) but weren't provisioned live in this build — worth being upfront about if
+asked to demo them specifically.
 
-| Source | System type | ADF connector | Why this shape |
-|---|---|---|---|
-| Order/transaction extracts | Daily file drop from the POS/e-commerce platform | Blob/SFTP → Copy Activity | Represents the common "batch file from a system we don't own" pattern |
-| Customer & product catalog | CRM / commerce database | Azure SQL Database connector | Represents pulling reference/dimension data straight from a relational source |
-| Web & app clickstream | Analytics events platform | REST API connector (paginated) | Represents an API source with pagination and rate limits |
+| Source | System type | Status |
+|---|---|---|
+| Order/transaction extracts | Daily file drop, Blob → Copy Activity | **Live** — ran end to end |
+| Customer & product catalog | Azure SQL Database connector | Designed, not provisioned live |
+| Web & app clickstream | REST API connector (paginated) | Designed, not provisioned live |
 
-Sample files are in [`data/sample/`](data/sample/) — `orders_raw.csv`, `customers.csv`,
-`products.csv`, `clickstream_events.jsonl`. The orders file has several intentional data-quality
-issues baked in (null keys, a duplicate row, an orphaned product reference, a negative quantity, a
-malformed date) so the Silver notebook has real things to catch — useful to point at directly in
-the demo.
+Sample files are in [`data/sample/`](data/sample/). The orders file has several intentional
+data-quality issues baked in — a null key, a duplicate row, an orphaned product reference, a
+negative quantity, a malformed date — used to validate that the Silver checks actually catch them.
 
 ## 4. Pipeline & Data Quality
 
-1. **ADF `pl_ingest_orders`**: `GetMetadata` confirms the file exists and is non-empty before
-   copying — fails loudly rather than producing a silent empty run.
-2. **ADF `pl_ingest_crm_catalog`** and **`pl_ingest_clickstream`**: pull the DB and API sources in
-   parallel into the raw zone.
-3. **ADF `pl_master_orchestration`**: runs the three ingestion pipelines, then triggers the
-   Databricks notebooks in sequence via `DatabricksNotebook` activities, passing parameters
-   (paths, dates) at each step.
-4. **Databricks `01_bronze_ingest_validate`**: schema-enforced landing into Delta, with
-   `_ingest_ts` / `_source_file` lineage columns.
-5. **Databricks `02_silver_clean_transform`**: runs the shared checks in
-   [`tests/data_quality_checks.py`](tests/data_quality_checks.py) — not-null, de-dup, referential
-   integrity against dimension tables, value-range — logging metrics to a `dq_log` Delta table and
-   quarantining failures to a `rejected` zone with a reason code.
-6. **ADF `IfCondition`**: reads the Silver notebook's reject-rate output; above a 5% threshold it
-   posts an alert (Teams webhook) before Gold runs — informational, not a hard stop (see
-   [Section 6](#6-data-challenges) for why).
-7. **Databricks `03_gold_aggregate`**: builds the curated business tables, registered with **Liquid
-   Clustering** (`CLUSTER BY`) rather than partitioning/ZORDER — Databricks' current recommendation
-   for new tables. Clustering keys were chosen from the columns Power BI actually filters by:
-   `(order_date, region)` on `daily_sales_summary`, `category` on `top_products`,
-   `customer_segment` on `customer_value`.
+**ADF (`adf/pipelines/`):** `pl_ingest_orders` runs a `GetMetadata` existence/non-empty check
+before a Copy activity lands the file in `raw`. The fuller orchestration
+(`pl_master_orchestration`, with the Databricks notebook activities and a reject-rate alert) is
+designed in the repo as the next step once the file-based pipeline is proven.
 
-This is the same pattern as Great Expectations / Delta Live Tables expectations, implemented as a
-small reusable PySpark module so every notebook applies checks the same way and logs them the same
-way — worth mentioning if asked "why not a framework."
+**Databricks (`databricks/notebooks/`), run on Serverless compute:**
+
+1. **`01_bronze_ingest_validate`** — schema-enforced landing into Delta, with `_ingest_ts` /
+   `_source_file` lineage columns (using `_metadata.file_path`, not the legacy
+   `input_file_name()` — see Section 6).
+2. **`02_silver_clean_transform`** — runs five checks, each one a small, separately-commented
+   function: not-null on business keys, de-duplication, negative-value check, and two
+   referential-integrity checks (orphaned `customer_id` and `product_id`). Every rejected row is
+   tagged with a reason code and written to the `rejected` external location.
+3. **`03_gold_aggregate`** — builds the three Gold tables, clustered by the columns each
+   table is actually filtered/grouped by downstream.
+
+**Connecting Databricks to ADLS** doesn't use a mount or an account key — see Section 6 for why —
+it uses a Unity Catalog **External Location**, backed by a **Storage Credential** referencing an
+**Access Connector**'s managed identity. No secret lives in any notebook.
 
 ## 5. Data Products
 
-| Gold table | Used by | Purpose |
-|---|---|---|
-| `daily_sales_summary` | Power BI ops dashboard | Daily trading view by region/category for the merchandising team |
-| `top_products` | Power BI / weekly review | "What's moving" ranking by revenue and units |
-| `customer_value` | Marketing/CRM | Lifetime value and recency, feeding segmentation/campaign targeting |
+| Gold table | Clustered by | Used by | Purpose |
+|---|---|---|---|
+| `retail_gold.daily_sales_summary` | `order_date`, `region` | Power BI ops dashboard | Daily trading view by region/category |
+| `retail_gold.top_products` | `category` | Weekly merchandising review | "What's moving" ranking by revenue/units |
+| `retail_gold.customer_value` | `customer_segment` | Marketing/CRM | Lifetime value, recency, for segmentation |
 
 ## 6. Data Challenges
 
-Concrete, demonstrable ones built into this project (good material for the Q&A):
+These are real issues hit and fixed during this build, not invented ones:
 
-- **Schema/format drift** — the source occasionally sent `order_date` as `DD-MM-YYYY` instead of
-  `YYYY-MM-DD`. Handled with `coalesce()` over multiple `to_date` parses rather than failing the
-  whole batch.
-- **Orphaned foreign keys** — an order referencing a `product_id` that doesn't exist in the catalog
-  (e.g. a product was deleted/retired but its old orders still arrive). Caught by the referential
-  integrity check and quarantined rather than joined into a `null` silently.
-- **Duplicate records** — retried Copy Activities or overlapping extracts can land the same row
-  twice. De-duplicated on natural key, but logged so volume is visible.
-- **API rate limiting** — the clickstream REST source returned HTTP 429s under the daily pull;
-  fixed with retry policy + request interval in the Copy Activity rather than failing the pipeline.
-- **A blocking quality gate caused a worse outage than the bad data itself** — an early version
-  failed the whole pipeline on any reject, which meant one malformed file took down the entire
-  next-day dashboard. Changed to: quarantine + log + alert, but let Gold still run on the clean
-  subset. This is a good "what would you do differently" / judgement-call story for the interview.
-- **Cost control on a free-tier build** — job clusters with auto-termination, rather than an
-  always-on interactive cluster, to keep this inside the free credit.
-
----
+- **DBFS mounts don't work on Serverless compute.** The original design used
+  `dbutils.fs.mount` with a storage account key. Serverless compute (the default for new
+  Unity-Catalog workspaces) doesn't support mounts or raw account-key Spark configs at all.
+  **Fix:** Unity Catalog External Locations, authenticated via an Access Connector's managed
+  identity — no key or secret anywhere in the code.
+- **`input_file_name()` is blocked under Unity Catalog** (`UC_COMMAND_NOT_SUPPORTED`) — it can
+  expose file paths outside the governed access model. **Fix:** use the `_metadata.file_path`
+  column instead, which Unity Catalog adds automatically to file-based reads.
+- **`to_date()` raises instead of returning null on a format mismatch, under ANSI mode** (the
+  current Databricks default). The original fallback logic — `coalesce()` over two `to_date()`
+  calls to handle a `DD-MM-YYYY` vs `YYYY-MM-DD` format inconsistency — assumed the older
+  "fail silently with null" behaviour and broke immediately on the first malformed date.
+  **Fix:** `try_to_date()`, the ANSI-safe equivalent that returns `NULL` on a parse failure.
+- **The "6 rejected" count and "5 fewer clean rows" count don't match, and that's correct, not a
+  bug.** One seeded duplicate order (`O1011`) appears twice in the raw data; the duplicate check
+  logs **both** occurrences to the rejected/audit table (so the full duplicate pair is visible
+  for review) but `dropDuplicates()` only removes one of the two from the working dataset. Worth
+  being able to explain this distinction if asked to reconcile the numbers.
+- **Orphaned foreign keys** — an order referencing a `product_id` (`P099`) that isn't in the
+  catalog, and an order referencing a `customer_id` (`C016`) that isn't in the customer table.
+  Caught by the referential-integrity checks and quarantined rather than silently joined as null.
+- **A blocking quality gate would have caused a worse outage than the bad data itself.** Designed
+  (not yet load-tested live): rather than failing the whole pipeline on any reject, the design
+  quarantines, logs, and alerts past a 5% threshold — but lets Gold still build on the clean
+  subset. Good "what would you do differently" material if asked.
 
 ## 7. Building this yourself on the Azure free tier
 
-You don't need any existing Azure access — the free account covers everything here.
-
-**Day 1 — Azure setup**
-1. Sign up for the [Azure free account](https://azure.microsoft.com/free) ($200 credit for 30
-   days, plus always-free services — no charge unless you explicitly move to pay-as-you-go).
-2. Create a **Resource Group**, e.g. `rg-retail-demo`.
-3. Create a **Storage Account** with **Data Lake Gen2 (hierarchical namespace) enabled** — this is
-   the checkbox that turns a plain Blob account into ADLS Gen2. Create containers: `landing`,
-   `raw`, `processed`, `rejected`, `curated`.
-4. Create an **Azure Key Vault** — used to store the storage/SQL/Databricks secrets instead of
-   hardcoding them in ADF.
-5. (Optional, for the SQL-source talking point) Create an **Azure SQL Database** (Basic/Serverless
-   tier) and load `customers.csv` / `products.csv` into two tables.
-6. Create an **Azure Databricks workspace** (Standard tier is enough and cheaper than Premium for
-   a demo; Premium only needed for Unity Catalog/passthrough auth).
-7. Create an **Azure Data Factory** instance.
-
-**Day 2 — Ingestion**
-1. Upload the sample files from `data/sample/` into the `landing` container (and your SQL tables,
-   if used).
-2. In ADF Studio, create the linked services in [`adf/linkedServices/`](adf/linkedServices/) —
-   recreate them via the UI (Manage → Linked services → New) using your own resource names; the
-   JSON here documents the config and auth pattern (Key Vault-backed secrets, managed identity).
-3. Recreate the datasets and pipelines from [`adf/datasets/`](adf/datasets/) and
-   [`adf/pipelines/`](adf/pipelines/) — either via ADF's "import from JSON" in the Author UI, or by
-   building each Copy/GetMetadata/IfCondition activity manually and using the JSON as your
-   reference for expressions and settings.
-4. Debug-run `pl_ingest_orders`, `pl_ingest_crm_catalog`, `pl_ingest_clickstream` individually and
-   confirm files land in `raw`.
-
-**Day 3 — Transform**
-1. In Databricks, create a Repo linked to this GitHub repo (Repos → Add Repo) so the notebooks are
-   version-controlled alongside the ADF JSON.
-2. Set up an ADLS Gen2 connection from Databricks — an OAuth service principal with its secret in
-   Key Vault, referenced via a Databricks secret scope (`databricks secrets create-scope`), is the
-   pattern used in the linked service file; avoid mounting with account keys.
-3. Run `01_bronze_ingest_validate.py`, then `02_silver_clean_transform.py`, then
-   `03_gold_aggregate.py` interactively first to confirm each layer, then wire them into ADF as
-   `DatabricksNotebook` activities per `pl_master_orchestration.json`.
-4. Run the master pipeline end-to-end; check the `dq_log` Delta table and `rejected` zone populate
-   as expected.
-
-**Day 4 (buffer) — polish & rehearse**
-1. Export the final ADF pipelines as ARM templates (Author → Export ARM Template) and commit them
-   alongside the hand-written JSON here for a real export to reference.
-2. Connect Power BI (free desktop app) to the `curated` container's Delta tables (via the Databricks
-   SQL endpoint or a simple Parquet read) for one real chart, if time allows — even one screenshot
-   of a dashboard is a strong visual for the presentation.
-3. **Cost control**: stop/delete the Databricks cluster and consider deleting the SQL Database when
-   you're not actively using them — storage and ADF are cheap, compute is what burns the credit.
-4. Rehearse using [`docs/presentation-notes.md`](docs/presentation-notes.md).
+1. **Resource group, storage, ADF, Databricks workspace** — see the step-by-step Azure setup
+   walkthrough (resource group → ADLS Gen2 with hierarchical namespace → 5 containers → ADF
+   instance → Databricks workspace) — straightforward portal steps, no special gotchas.
+2. **Connect Databricks to ADLS the Unity Catalog way** (this is the part with real gotchas,
+   detailed in Section 6):
+   - Create an **Access Connector for Azure Databricks** (a managed identity resource).
+   - Grant it **Storage Blob Data Contributor** on the storage account via IAM.
+   - In Databricks: Catalog → Create a **Storage Credential** (Azure Managed Identity type),
+     referencing the Access Connector's resource ID.
+   - Create one **External Location** per container the notebooks touch (`raw`, `processed`,
+     `rejected`), each pointing at `abfss://<container>@<account>.dfs.core.windows.net/` using
+     that storage credential.
+3. **Run the notebooks** in order on Serverless compute: `01_bronze_ingest_validate` →
+   `02_silver_clean_transform` → `03_gold_aggregate`. Use **Run all** rather than re-running
+   individual cells out of order — notebook variables persist across cells, and re-running a
+   cell that reassigns `orders` partway through a chain of checks will silently work against
+   already-cleaned data instead of the original raw rows.
+4. **Cost control**: this all fits comfortably inside the free-tier credit and Serverless'
+   pay-per-use model for a demo of this size. No always-on cluster to forget about.
 
 ---
 
@@ -186,7 +159,5 @@ retail-databricks-adf-pipeline/
 │   ├── datasets/
 │   ├── pipelines/
 │   └── triggers/
-├── databricks/notebooks/         # 01_bronze, 02_silver, 03_gold
-└── tests/
-    └── data_quality_checks.py    # shared PySpark DQ check functions
+└── databricks/notebooks/         # 01_bronze, 02_silver, 03_gold - validated end to end
 ```

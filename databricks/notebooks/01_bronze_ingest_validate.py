@@ -19,8 +19,8 @@ from pyspark.sql.types import (
 
 # --- Parameters passed in from ADF ---
 dbutils.widgets.text("ingestion_date", "2024-01-14")
-dbutils.widgets.text("raw_base_path", "/mnt/raw")
-dbutils.widgets.text("bronze_base_path", "/mnt/bronze")
+dbutils.widgets.text("raw_base_path", "abfss://raw@retaildemoadls01.dfs.core.windows.net")
+dbutils.widgets.text("bronze_base_path", "abfss://processed@retaildemoadls01.dfs.core.windows.net/bronze")
 
 ingestion_date = dbutils.widgets.get("ingestion_date")
 raw_base_path = dbutils.widgets.get("raw_base_path")

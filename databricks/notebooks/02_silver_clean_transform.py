@@ -3,50 +3,109 @@
 # Purpose: take Bronze (raw-as-landed) and apply the actual data quality rules:
 #   - not-null checks on business keys
 #   - de-duplication on natural key
-#   - referential integrity against dimension tables
 #   - value-range checks (e.g. negative quantity)
-#   - date parsing / standardisation
+#   - referential integrity against dimension tables (orphaned foreign keys)
+#   - date format standardisation
 #
-# Anything that fails a check is NOT silently dropped - it's written to a
-# `rejected` location with a reason code, and a row is appended to `dq_log`
-# so failures are visible (and can trigger an ADF alert if the reject rate
-# crosses a threshold - see the master pipeline's "If Condition" activity).
-
-import sys
-sys.path.append("/Workspace/Repos/retail-databricks-adf-pipeline/tests")  # adjust to your repo path in Databricks
+# This is the version actually validated end-to-end on Serverless compute against
+# the real ADLS Gen2 account (see README for the live build notes). Earlier drafts
+# used DBFS mounts and a separate shared-module import - both were replaced after
+# hitting real Unity Catalog/serverless incompatibilities during the build:
+#   - DBFS mounts don't work on serverless compute -> switched to Unity Catalog
+#     External Locations (abfss:// paths), authenticated via an Access Connector
+#     managed identity instead of an account key.
+#   - input_file_name() is blocked under Unity Catalog -> use _metadata.file_path.
+#   - to_date() raises CANNOT_PARSE_TIMESTAMP on a format mismatch under ANSI mode
+#     (the current Databricks default) instead of returning null -> use try_to_date,
+#     which returns NULL on a parse failure, so the coalesce() fallback actually works.
+#
+# Anything that fails a check is NOT silently dropped - it's written to the
+# `rejected` external location with a reason code, so failures stay visible and
+# reviewable rather than disappearing.
 
 from pyspark.sql import functions as F
-from data_quality_checks import (
-    check_not_null, check_no_duplicates, check_referential_integrity,
-    check_value_range, write_dq_log
-)
 
-dbutils.widgets.text("bronze_base_path", "/mnt/bronze")
-dbutils.widgets.text("silver_base_path", "/mnt/silver")
-dbutils.widgets.text("rejected_base_path", "/mnt/rejected")
-dbutils.widgets.text("dq_log_path", "/mnt/silver/_dq_log")
+dbutils.widgets.text("bronze_base_path", "abfss://processed@retaildemoadls01.dfs.core.windows.net/bronze")
+dbutils.widgets.text("silver_base_path", "abfss://processed@retaildemoadls01.dfs.core.windows.net/silver")
+dbutils.widgets.text("rejected_base_path", "abfss://rejected@retaildemoadls01.dfs.core.windows.net")
 
 bronze_base_path = dbutils.widgets.get("bronze_base_path")
 silver_base_path = dbutils.widgets.get("silver_base_path")
 rejected_base_path = dbutils.widgets.get("rejected_base_path")
-dq_log_path = dbutils.widgets.get("dq_log_path")
 
-# --- Load Bronze ---
-orders_bronze = spark.read.format("delta").load(f"{bronze_base_path}/orders")
-customers_bronze = spark.read.format("delta").load(f"{bronze_base_path}/customers")
-products_bronze = spark.read.format("delta").load(f"{bronze_base_path}/products")
+orders = spark.read.format("delta").load(f"{bronze_base_path}/orders")
+customers = spark.read.format("delta").load(f"{bronze_base_path}/customers")
+products = spark.read.format("delta").load(f"{bronze_base_path}/products")
 
-# --- Dimensions pass through with light cleaning (dedup only) ---
-customers_clean, customers_rejected, m1 = check_no_duplicates(customers_bronze, ["customer_id"])
-products_clean, products_rejected, m2 = check_no_duplicates(products_bronze, ["product_id"])
+orders_original_count = orders.count()
+print("Starting orders count:", orders_original_count)
 
-# --- Standardise order_date: source sometimes sends DD-MM-YYYY instead of YYYY-MM-DD
-#     (this is a real example of "schema/format drift" worth raising in the interview).
-#     Uses try_to_date rather than to_date - under ANSI mode (the current Databricks
-#     default), to_date() raises CANNOT_PARSE_TIMESTAMP on a format mismatch instead of
-#     returning null, which breaks a coalesce-based fallback. try_to_date returns NULL
-#     on a parse failure instead, which is what the fallback logic actually needs. ---
-orders_parsed = orders_bronze.withColumn(
+
+# --- Reusable quality-check functions -------------------------------------
+# Every function follows the same pattern on purpose: takes a DataFrame in,
+# returns (clean_rows, rejected_rows) out. That consistency is what makes
+# them composable - each check's clean output feeds straight into the next.
+
+def check_nulls(df, columns):
+    """
+    USE: catches rows where a required business key is missing,
+    e.g. an order with no customer_id - can't process that order at all.
+    HOW: counts how many of the given columns are null per row;
+    any row with a count above 0 gets rejected.
+    """
+    null_count = sum(F.col(c).isNull().cast("int") for c in columns)
+    rejected = df.filter(null_count > 0)
+    clean = df.filter(null_count == 0)
+    return clean, rejected
+
+
+def check_duplicates(df, key_column):
+    """
+    USE: catches the same record landing twice, e.g. from a retried file copy.
+    HOW: finds key values that appear more than once. The rejected side keeps
+    every occurrence of a duplicated key (for audit visibility); the clean
+    side keeps exactly one copy of each key via dropDuplicates.
+    """
+    duplicate_keys = df.groupBy(key_column).count().filter("count > 1").select(key_column)
+    rejected = df.join(duplicate_keys, key_column, "inner")
+    clean = df.dropDuplicates([key_column])
+    return clean, rejected
+
+
+def check_negative(df, column):
+    """
+    USE: catches values that should never be negative, e.g. quantity ordered.
+    A negative quantity usually means a data entry or extract error upstream.
+    """
+    rejected = df.filter(F.col(column) < 0)
+    clean = df.filter(F.col(column) >= 0)
+    return clean, rejected
+
+
+def check_orphan_keys(df, fk_column, reference_df, reference_column):
+    """
+    USE: catches a foreign key that points to something that doesn't exist,
+    e.g. an order for a product_id that isn't in the product catalog
+    (the product may have been retired, or the catalog extract is stale).
+    HOW: "left_anti" join keeps only rows from df with NO match in the
+    reference table (rejected); "left_semi" keeps only rows that DO match
+    (clean) - the opposite of each other.
+    """
+    valid_keys = reference_df.select(reference_column).distinct()
+    rejected = df.join(valid_keys, df[fk_column] == valid_keys[reference_column], "left_anti")
+    clean = df.join(valid_keys, df[fk_column] == valid_keys[reference_column], "left_semi")
+    return clean, rejected
+
+
+# --- Clean the dimension tables (dedup only - no audit trail needed for these) ---
+customers_clean, _ = check_duplicates(customers, "customer_id")
+products_clean, _ = check_duplicates(products, "product_id")
+print("Customers:", customers_clean.count(), " Products:", products_clean.count())
+
+# --- Standardise order_date: source sometimes sends DD-MM-YYYY instead of YYYY-MM-DD.
+#     try_to_date (not to_date) so a format mismatch returns NULL instead of raising
+#     under ANSI mode, which is what the coalesce() fallback actually needs.
+orders = orders.withColumn(
     "order_date_parsed",
     F.coalesce(
         F.expr("try_to_date(order_date, 'yyyy-MM-dd')"),
@@ -54,43 +113,45 @@ orders_parsed = orders_bronze.withColumn(
     )
 )
 
-# --- Fact table quality checks, chained ---
-all_rejected = []
+# --- Run every check on orders, in order, each feeding its clean output into the next ---
+rejected_pieces = []
 
-orders_step1, rej1, metric1 = check_not_null(orders_parsed, ["order_id", "customer_id", "product_id"])
-all_rejected.append((rej1, metric1))
+orders, rej = check_nulls(orders, ["order_id", "customer_id", "product_id"])
+rejected_pieces.append(rej.withColumn("reason", F.lit("missing_key")))
 
-orders_step2, rej2, metric2 = check_no_duplicates(orders_step1, ["order_id"])
-all_rejected.append((rej2, metric2))
+orders, rej = check_duplicates(orders, "order_id")
+rejected_pieces.append(rej.withColumn("reason", F.lit("duplicate_order_id")))
 
-orders_step3, rej3, metric3 = check_value_range(orders_step2, "quantity", min_value=0)
-all_rejected.append((rej3, metric3))
+orders, rej = check_negative(orders, "quantity")
+rejected_pieces.append(rej.withColumn("reason", F.lit("negative_quantity")))
 
-orders_step4, rej4, metric4 = check_referential_integrity(orders_step3, "customer_id", customers_clean, "customer_id")
-all_rejected.append((rej4, metric4))
+orders, rej = check_orphan_keys(orders, "customer_id", customers_clean, "customer_id")
+rejected_pieces.append(rej.withColumn("reason", F.lit("orphan_customer_id")))
 
-orders_clean, rej5, metric5 = check_referential_integrity(orders_step4, "product_id", products_clean, "product_id")
-all_rejected.append((rej5, metric5))
+orders, rej = check_orphan_keys(orders, "product_id", products_clean, "product_id")
+rejected_pieces.append(rej.withColumn("reason", F.lit("orphan_product_id")))
 
-orders_clean = orders_clean.withColumn(
-    "net_amount", F.round(F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct") / 100), 2)
+# --- Combine and quarantine every rejected row, tagged with why it was rejected ---
+all_rejected = rejected_pieces[0]
+for piece in rejected_pieces[1:]:
+    all_rejected = all_rejected.unionByName(piece, allowMissingColumns=True)
+
+reject_rate = all_rejected.count() / orders_original_count
+print(f"Total rejected: {all_rejected.count()} out of {orders_original_count} ({reject_rate:.0%})")
+
+all_rejected.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(f"{rejected_base_path}/orders")
+
+# --- Add the business calculation, write the clean Silver tables ---
+orders = orders.withColumn(
+    "net_amount",
+    F.round(F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct") / 100), 2)
 )
 
-# --- Write Silver (clean, conformed) ---
-orders_clean.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(f"{silver_base_path}/orders")
+orders.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(f"{silver_base_path}/orders")
 customers_clean.write.format("delta").mode("overwrite").save(f"{silver_base_path}/customers")
 products_clean.write.format("delta").mode("overwrite").save(f"{silver_base_path}/products")
 
-# --- Quarantine rejects with reason codes, for the data team to review/backfill ---
-for rejected_df, _ in all_rejected:
-    if rejected_df.count() > 0:
-        rejected_df.write.format("delta").mode("append").save(f"{rejected_base_path}/orders")
+print("Final clean orders:", orders.count())
 
-# --- Log every check's metrics so reject rates are queryable / alertable ---
-write_dq_log(spark, [m1, m2, metric1, metric2, metric3, metric4, metric5], layer="silver", table_name="orders", dq_log_path=dq_log_path)
-
-reject_rate = sum(m["rows_rejected"] for _, m in all_rejected) / max(orders_bronze.count(), 1)
-print(f"Reject rate this run: {reject_rate:.2%}")
-
-# ADF reads this exit value via "Notebook Output" and can branch (e.g. alert if > 5%)
-dbutils.notebook.exit(str({"reject_rate": reject_rate, "clean_rows": orders_clean.count()}))
+# ADF reads this exit value via "Notebook Output" and can branch (e.g. alert if reject_rate > 5%)
+dbutils.notebook.exit(str({"reject_rate": reject_rate, "clean_rows": orders.count()}))

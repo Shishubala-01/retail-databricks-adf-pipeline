@@ -12,11 +12,9 @@
 
 from pyspark.sql import functions as F
 
-dbutils.widgets.text("silver_base_path", "/mnt/silver")
-dbutils.widgets.text("gold_base_path", "/mnt/gold")
+dbutils.widgets.text("silver_base_path", "abfss://processed@retaildemoadls01.dfs.core.windows.net/silver")
 
 silver_base_path = dbutils.widgets.get("silver_base_path")
-gold_base_path = dbutils.widgets.get("gold_base_path")
 
 spark.sql("CREATE DATABASE IF NOT EXISTS retail_gold")
 
