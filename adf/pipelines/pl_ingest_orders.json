@@ -1,66 +1,129 @@
 {
-  "name": "pl_ingest_orders",
-  "type": "Microsoft.DataFactory/factories/pipelines",
-  "properties": {
-    "description": "Lands the daily orders extract from the landing container into the raw zone. Checks the file exists and is non-empty before copying, so a missing upstream drop fails loudly instead of silently producing an empty downstream run.",
-    "parameters": {
-      "ingestionDate": { "type": "string" }
-    },
-    "activities": [
-      {
-        "name": "CheckOrdersFileExists",
-        "type": "GetMetadata",
-        "typeProperties": {
-          "dataset": { "referenceName": "ds_Landing_Orders", "type": "DatasetReference" },
-          "fieldList": ["exists", "size"]
-        }
-      },
-      {
-        "name": "FailIfMissingOrEmpty",
-        "type": "IfCondition",
-        "dependsOn": [{ "activity": "CheckOrdersFileExists", "dependencyConditions": ["Succeeded"] }],
-        "typeProperties": {
-          "expression": {
-            "value": "@or(equals(activity('CheckOrdersFileExists').output.exists, false), equals(activity('CheckOrdersFileExists').output.size, 0))",
-            "type": "Expression"
-          },
-          "ifTrueActivities": [
+    "name": "pl_ingest_orders",
+    "properties": {
+        "activities": [
             {
-              "name": "RaiseMissingFileError",
-              "type": "Fail",
-              "typeProperties": {
-                "message": "Orders extract for @{pipeline().parameters.ingestionDate} is missing or empty.",
-                "errorCode": "OrdersFileMissing"
-              }
+                "name": "Get Metadata1",
+                "type": "GetMetadata",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "dataset": {
+                        "referenceName": "ds_Landing_Orders",
+                        "type": "DatasetReference"
+                    },
+                    "fieldList": ["exists", "size"],
+                    "storeSettings": {
+                        "type": "AzureBlobFSReadSettings",
+                        "recursive": true,
+                        "enablePartitionDiscovery": false
+                    },
+                    "formatSettings": {
+                        "type": "DelimitedTextReadSettings"
+                    }
+                }
+            },
+            {
+                "name": "If Condition1",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Get Metadata1",
+                        "dependencyConditions": ["Succeeded"]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@or(equals(activity('Get Metadata1').output.exists, false), equals(activity('Get Metadata1').output.size, 0))",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Fail1",
+                            "type": "Fail",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "message": "Orders file is missing or empty - pipeline cannot proceed",
+                                "errorCode": "OrdersFileMissing"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Copy data1",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "If Condition1",
+                        "dependencyConditions": ["Succeeded"]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": true,
+                            "enablePartitionDiscovery": true
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "DelimitedTextSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextWriteSettings",
+                            "quoteAllText": true,
+                            "fileExtension": ".txt"
+                        }
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "ds_Landing_Orders",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "ds_Raw_Orders",
+                        "type": "DatasetReference"
+                    }
+                ]
             }
-          ]
-        }
-      },
-      {
-        "name": "CopyOrdersToRaw",
-        "type": "Copy",
-        "dependsOn": [{ "activity": "FailIfMissingOrEmpty", "dependencyConditions": ["Succeeded"] }],
-        "inputs": [{ "referenceName": "ds_Landing_Orders", "type": "DatasetReference" }],
-        "outputs": [
-          {
-            "referenceName": "ds_ADLS_Raw_Generic",
-            "type": "DatasetReference",
-            "parameters": {
-              "fileSystem": "raw",
-              "fileName": "orders_raw.csv"
-            }
-          }
         ],
-        "typeProperties": {
-          "source": { "type": "DelimitedTextSource" },
-          "sink": { "type": "DelimitedTextSink" },
-          "enableSkipIncompatibleRow": false,
-          "logSettings": {
-            "enableCopyActivityLog": true,
-            "copyActivityLogSettings": { "logLevel": "Warning" }
-          }
-        }
-      }
-    ]
-  }
+        "annotations": []
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
 }
