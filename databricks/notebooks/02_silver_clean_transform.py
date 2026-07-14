@@ -147,7 +147,7 @@ orders = orders.withColumn(
     F.round(F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct") / 100), 2)
 )
 
-orders.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(f"{silver_base_path}/orders")
+orders.write.format("delta").mode("overwrite").option("mergeSchema", "true").save(f"{silver_base_path}/orders")
 customers_clean.write.format("delta").mode("overwrite").save(f"{silver_base_path}/customers")
 products_clean.write.format("delta").mode("overwrite").save(f"{silver_base_path}/products")
 
